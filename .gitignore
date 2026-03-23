@@ -1,3 +1,4 @@
+# ========== 你原有的编译产物规则 ==========
 # Prerequisites
 *.d
 
@@ -39,3 +40,42 @@
 
 # debug information files
 *.dwo
+
+# ========== CMake 生成文件/目录 规则 ==========
+# CMake 核心配置文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+# Ninja 构建文件（如果用 Ninja）
+build.ninja
+rules.ninja
+.ninja_deps
+.ninja_log
+# CPack 打包文件
+CPackConfig.cmake
+CPackSourceConfig.cmake
+_cpack_*
+# 安装清单
+install_manifest.txt
+# 编译目录（推荐的 out-of-source build 目录，可自定义名称）
+build/
+cmake-build-*/  # CLion 默认生成的编译目录
+# Visual Studio 工程文件（CMake 生成的）
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
+*.ipch
+*.opensdf
+*.sdf
+# Xcode 工程文件（CMake 生成的）
+*.xcodeproj/
+*.xcworkspace/
+# Qt Creator 工程文件
+*.creator
+*.creator.user
+*.qbs
+*.user
+*.cmake
