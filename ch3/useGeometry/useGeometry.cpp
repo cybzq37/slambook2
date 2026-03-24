@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
     v_rotated = rotation_matrix * v; // 使用旋转矩阵旋转向量
     cout << "旋转后的向量 = \n" << v_rotated.transpose() << endl;
 
-    Vector3d euler_angles = rotation_vector.matrix().canonicalEulerAngles(2, 1, 0); // 提取欧拉角，顺序为 ZYX, 即roll pitch yaw
+    Vector3d euler_angles = rotation_vector.matrix().eulerAngles(2, 1, 0); // 提取欧拉角，顺序为 ZYX, 即roll pitch yaw
     cout << "欧拉角 = \n" << euler_angles.transpose() << endl;
 
     // 欧式矩阵
