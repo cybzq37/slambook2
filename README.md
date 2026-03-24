@@ -8,6 +8,16 @@ apt install -y libeigen3-dev
 apt install -y libopencv-dev
 ```
 
+cmake版本要大于2.4
+```bash
+wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+
+echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ jammy main' | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
+
+sudo apt update
+sudo apt install cmake
+```
+
 安装 opengl
 ```bash
 # ubuntu
@@ -53,6 +63,29 @@ cd 3rdparty/Pangolin
 mkdir build && cd build
 cmake ..
 make -j
+sudo make install
+ldconfig
+```
+
+install Sophus
+```bash
+# install fmt first
+apt-get install libfmt-dev
+ls /usr/include/fmt
+
+# if version under ubuntu20.04
+git clone https://github.com/fmtlib/fmt.git
+cd fmt
+mkdir build && cd build
+cmake ..
+make
+sudo make install
+
+# install Sophus
+cd slambook2/3rdparty/Sophus
+mkdir build && cd build
+cmake ..
+make
 sudo make install
 ldconfig
 ```
