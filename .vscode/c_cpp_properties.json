@@ -5,7 +5,8 @@
       "includePath": [
         "${workspaceFolder}/**",
         "/opt/homebrew/include",
-        "/opt/homebrew/include/eigen3"
+        "/opt/homebrew/include/eigen3",
+        "/opt/homebrew/include/opencv4"
       ],
       "compilerPath": "/usr/bin/clang++",
       "intelliSenseMode": "macos-clang-arm64",
