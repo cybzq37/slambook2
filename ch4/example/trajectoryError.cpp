@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
   double rmse = 0;
   for (size_t i = 0; i < estimated.size(); i++) {
     Sophus::SE3d p1 = estimated[i], p2 = groundtruth[i];
-    double error = (p2.inverse() * p1).log().norm();
+    double error = (p2.inverse() * p1).log().norm(); // 把p1变换到p2坐标系下，使用 log 映射到李代数（6维），求二范数，欧氏距离
     rmse += error * error;
   }
   rmse = rmse / double(estimated.size());
