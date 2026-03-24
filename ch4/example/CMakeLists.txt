@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.5)
-
 option(USE_UBUNTU_20 "Set to ON if you are using Ubuntu 20.04" ON)
 
 find_package(Pangolin REQUIRED)

@@ -2,10 +2,14 @@
 
 安装环境
 ```bash
+#ubuntu
 apt install -y build-essential cmake
 apt install -y python3-dev python3-numpy python3-pip
 apt install -y libeigen3-dev
 apt install -y libopencv-dev
+
+#macos
+brew install eigen
 ```
 
 cmake版本要大于2.4
@@ -65,6 +69,14 @@ cmake ..
 make -j
 sudo make install
 ldconfig
+
+#macos
+cmake -B build \
+  -DBUILD_PANGOLIN_PYTHON=OFF \
+  -DCMAKE_INSTALL_PREFIX=/opt/homebrew
+cmake --build build
+make -j
+make install
 ```
 
 install Sophus
@@ -88,4 +100,17 @@ cmake ..
 make
 sudo make install
 ldconfig
+
+###macos
+brew install fmt
+
+cd Sophus
+mkdir build && cd build
+
+cmake .. \
+  -DCMAKE_PREFIX_PATH=/opt/homebrew \
+  -DCMAKE_INSTALL_PREFIX=/opt/homebrew
+
+make -j
+make install
 ```
