@@ -11,12 +11,11 @@ typedef vector<Sophus::SE3d, Eigen::aligned_allocator<Sophus::SE3d>> TrajectoryT
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 
 // 在pangolin中画图，已写好，无需调整
-void showPointCloud(
-    const vector<Vector6d, Eigen::aligned_allocator<Vector6d>> &pointcloud);
+void showPointCloud(const vector<Vector6d, Eigen::aligned_allocator<Vector6d>> &pointcloud);
 
 int main(int argc, char **argv) {
     vector<cv::Mat> colorImgs, depthImgs;    // 彩色图和深度图
-    TrajectoryType poses;         // 相机位姿
+    TrajectoryType poses;                    // 相机位姿
 
     ifstream fin("./pose.txt");
     if (!fin) {
@@ -27,13 +26,13 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 5; i++) {
         boost::format fmt("./%s/%d.%s"); //图像文件格式
         colorImgs.push_back(cv::imread((fmt % "color" % (i + 1) % "png").str()));
-        depthImgs.push_back(cv::imread((fmt % "depth" % (i + 1) % "pgm").str(), -1)); // 使用-1读取原始图像
+        depthImgs.push_back(cv::imread((fmt % "depth" % (i + 1) % "pgm").str(), -1)); // 使用-1读取原始图像（-1表示保留原始数据类型）
 
         double data[7] = {0};
-        for (auto &d:data)
+        for (auto &d:data) // 从fin中读取7个数据，分别是位姿的平移（3个）和旋转（4个，四元数）
             fin >> d;
-        Sophus::SE3d pose(Eigen::Quaterniond(data[6], data[3], data[4], data[5]),
-                          Eigen::Vector3d(data[0], data[1], data[2]));
+        Sophus::SE3d pose(Eigen::Quaterniond(data[6], data[3], data[4], data[5]),  // 四元数的顺序是w, x, y, z
+                          Eigen::Vector3d(data[0], data[1], data[2]));             // 平移部分
         poses.push_back(pose);
     }
 
@@ -43,9 +42,9 @@ int main(int argc, char **argv) {
     double cy = 253.5;
     double fx = 518.0;
     double fy = 519.0;
-    double depthScale = 1000.0;
+    double depthScale = 1000.0; // 深度图像的缩放因子
     vector<Vector6d, Eigen::aligned_allocator<Vector6d>> pointcloud;
-    pointcloud.reserve(1000000);
+    pointcloud.reserve(1000000); // 预分配内存，避免频繁扩容
 
     for (int i = 0; i < 5; i++) {
         cout << "转换图像中: " << i + 1 << endl;
@@ -57,14 +56,14 @@ int main(int argc, char **argv) {
                 unsigned int d = depth.ptr<unsigned short>(v)[u]; // 深度值
                 if (d == 0) continue; // 为0表示没有测量到
                 Eigen::Vector3d point;
-                point[2] = double(d) / depthScale;
-                point[0] = (u - cx) * point[2] / fx;
+                point[2] = double(d) / depthScale;      // 深度值转换为米
+                point[0] = (u - cx) * point[2] / fx;    // 根据像素坐标和深度值计算相机坐标系下的点
                 point[1] = (v - cy) * point[2] / fy;
-                Eigen::Vector3d pointWorld = T * point;
+                Eigen::Vector3d pointWorld = T * point; // 将点从相机坐标系转换到世界坐标系
 
                 Vector6d p;
                 p.head<3>() = pointWorld;
-                p[5] = color.data[v * color.step + u * color.channels()];   // blue
+                p[5] = color.data[v * color.step + u * color.channels()];     // blue
                 p[4] = color.data[v * color.step + u * color.channels() + 1]; // green
                 p[3] = color.data[v * color.step + u * color.channels() + 2]; // red
                 pointcloud.push_back(p);
