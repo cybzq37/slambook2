@@ -129,4 +129,19 @@ git submodule update --init --recursive
 cd third_party/abseil-cpp
 cmake -B build
 cmake --build build
+
+#macos
+brew install ceres-solver
+```
+
+install g2o
+```bash
+mkdir build && cd build
+
+cmake .. \
+  -DCMAKE_PREFIX_PATH=/opt/homebrew \
+  -DCMAKE_INSTALL_PREFIX=/opt/homebrew
+
+make -j
+make install
 ```
