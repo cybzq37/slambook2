@@ -114,3 +114,19 @@ cmake .. \
 make -j
 make install
 ```
+
+install googletest
+```bash
+#ubuntu
+cmake -B build
+cmake --build build
+```
+
+install ceres-solver
+```bash
+#ubuntu
+git submodule update --init --recursive
+cd third_party/abseil-cpp
+cmake -B build
+cmake --build build
+```
