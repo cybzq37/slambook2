@@ -8,14 +8,14 @@ using namespace std;
 using namespace Eigen;
 
 int main(int argc, char **argv) {
-  double ar = 1.0, br = 2.0, cr = 1.0;         // 真实参数值
-  double ae = 2.0, be = -1.0, ce = 5.0;        // 估计参数值
-  int N = 100;                                 // 数据点
-  double w_sigma = 1.0;                        // 噪声Sigma值
-  double inv_sigma = 1.0 / w_sigma;
+  double ar = 1.0, br = 2.0, cr = 1.0;         // 真实参数值（用来生成模拟数据）
+  double ae = 2.0, be = -1.0, ce = 5.0;        // 估计参数值（初始猜测值）
+  int N = 100;                                 // 数据点（表示生成100个观测点）
+  double w_sigma = 1.0;                        // 噪声Sigma值（标准差）
+  double inv_sigma = 1.0 / w_sigma;            // Sigma（σ）的倒数，在优化中用于加权误差
   cv::RNG rng;                                 // OpenCV随机数产生器
 
-  vector<double> x_data, y_data;      // 数据
+  vector<double> x_data, y_data;               // 数据
   for (int i = 0; i < N; i++) {
     double x = i / 100.0;
     x_data.push_back(x);

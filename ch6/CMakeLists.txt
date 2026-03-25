@@ -15,8 +15,10 @@ find_package(Ceres REQUIRED)
 include_directories(${CERES_INCLUDE_DIRS})
 
 # g2o
-find_package(G2O REQUIRED)
-include_directories(${G2O_INCLUDE_DIRS})
+find_package(g2o REQUIRED)
+
+# fmt
+find_package(fmt REQUIRED)
 
 # Eigen
 include_directories("/usr/include/eigen3")
@@ -28,4 +30,4 @@ add_executable(ceresCurveFitting ceresCurveFitting.cpp)
 target_link_libraries(ceresCurveFitting ${OpenCV_LIBS} ${CERES_LIBRARIES})
 
 add_executable(g2oCurveFitting g2oCurveFitting.cpp)
-target_link_libraries(g2oCurveFitting ${OpenCV_LIBS} ${G2O_CORE_LIBRARY} ${G2O_STUFF_LIBRARY})
+target_link_libraries(g2oCurveFitting ${OpenCV_LIBS} g2o::core g2o::stuff fmt)
