@@ -35,11 +35,11 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < N; i++) {
       double xi = x_data[i], yi = y_data[i];  // 第i个样本的观测值和预测值
-      double error = yi - exp(ae * xi * xi + be * xi + ce);
+      double error = yi - exp(ae * xi * xi + be * xi + ce); // 计算残差（观测值 - 预测值）
       Vector3d J; // 雅可比矩阵
-      J[0] = -xi * xi * exp(ae * xi * xi + be * xi + ce);  // de/da
-      J[1] = -xi * exp(ae * xi * xi + be * xi + ce);       // de/db
-      J[2] = -exp(ae * xi * xi + be * xi + ce);            // de/dc
+      J[0] = -xi * xi * exp(ae * xi * xi + be * xi + ce);   // de/da
+      J[1] = -xi * exp(ae * xi * xi + be * xi + ce);        // de/db
+      J[2] = -exp(ae * xi * xi + be * xi + ce);             // de/dc
 
       H += inv_sigma * inv_sigma * J * J.transpose();
       b += -inv_sigma * inv_sigma * error * J;
@@ -54,6 +54,7 @@ int main(int argc, char **argv) {
       break;
     }
 
+    // 如果cost增加了，说明更新没有改善结果，可能是因为H不够好（比如H不是正定的），因此可以放弃这次更新
     if (iter > 0 && cost >= lastCost) {
       cout << "cost: " << cost << ">= last cost: " << lastCost << ", break." << endl;
       break;
