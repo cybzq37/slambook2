@@ -18,11 +18,12 @@ int main(int argc, char **argv) {
   assert(img_1.data != nullptr && img_2.data != nullptr);
 
   //-- 初始化
-  std::vector<KeyPoint> keypoints_1, keypoints_2;
+  std::vector<KeyPoint> keypoints_1, keypoints_2;  //特征点
   Mat descriptors_1, descriptors_2;
   Ptr<FeatureDetector> detector = ORB::create();
   Ptr<DescriptorExtractor> descriptor = ORB::create();
-  Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce-Hamming");
+  // ORB 的描述子是二进制字符串,需要使用 Hamming 距离进行匹配
+  Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce-Hamming");  
 
   //-- 第一步:检测 Oriented FAST 角点位置
   chrono::steady_clock::time_point t1 = chrono::steady_clock::now();

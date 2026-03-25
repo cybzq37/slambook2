@@ -24,8 +24,8 @@ typedef vector<uint32_t> DescType; // Descriptor type
  * @param keypoints detected fast keypoints
  * @param descriptors descriptors
  *
- * NOTE: if a keypoint goes outside the image boundary (8 pixels), descriptors will not be computed and will be left as
- * empty
+ * NOTE: if a keypoint goes outside the image boundary (8 pixels), 
+ * descriptors will not be computed and will be left as empty
  */
 void ComputeORB(const cv::Mat &img, vector<cv::KeyPoint> &keypoints, vector<DescType> &descriptors);
 
