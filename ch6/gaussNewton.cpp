@@ -15,15 +15,15 @@ int main(int argc, char **argv) {
   double inv_sigma = 1.0 / w_sigma;            // Sigma（σ）的倒数，在优化中用于加权误差
   cv::RNG rng;                                 // OpenCV随机数产生器
 
-  vector<double> x_data, y_data;               // 数据
+  vector<double> x_data, y_data;               // 生成带噪声的样本数据
   for (int i = 0; i < N; i++) {
     double x = i / 100.0;
     x_data.push_back(x);
-    y_data.push_back(exp(ar * x * x + br * x + cr) + rng.gaussian(w_sigma * w_sigma));
+    y_data.push_back(exp(ar * x * x + br * x + cr) + rng.gaussian(w_sigma * w_sigma));  // y = exp(ax^2 + bx + c) + w
   }
 
-  // 开始Gauss-Newton迭代
-  int iterations = 100;    // 迭代次数
+  // 开始Gauss-Newton迭代，非线性最小二乘拟合
+  int iterations = 100;           // 迭代次数
   double cost = 0, lastCost = 0;  // 本次迭代的cost和上一次迭代的cost
 
   chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
@@ -34,12 +34,12 @@ int main(int argc, char **argv) {
     cost = 0;
 
     for (int i = 0; i < N; i++) {
-      double xi = x_data[i], yi = y_data[i];  // 第i个数据点
+      double xi = x_data[i], yi = y_data[i];  // 第i个样本的观测值和预测值
       double error = yi - exp(ae * xi * xi + be * xi + ce);
       Vector3d J; // 雅可比矩阵
       J[0] = -xi * xi * exp(ae * xi * xi + be * xi + ce);  // de/da
-      J[1] = -xi * exp(ae * xi * xi + be * xi + ce);  // de/db
-      J[2] = -exp(ae * xi * xi + be * xi + ce);  // de/dc
+      J[1] = -xi * exp(ae * xi * xi + be * xi + ce);       // de/db
+      J[2] = -exp(ae * xi * xi + be * xi + ce);            // de/dc
 
       H += inv_sigma * inv_sigma * J * J.transpose();
       b += -inv_sigma * inv_sigma * error * J;
