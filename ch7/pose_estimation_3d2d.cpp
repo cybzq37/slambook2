@@ -209,18 +209,17 @@ void bundleAdjustmentGaussNewton(
     Eigen::Matrix<double, 6, 6> H = Eigen::Matrix<double, 6, 6>::Zero();    // Hessian矩阵，6x6的矩阵，表示SE3的增量对cost的二阶导数
     Vector6d b = Vector6d::Zero();    // b向量，6维的向量，表示SE3的增量对cost的一阶导数
 
-    cost = 0;
-    // compute cost
+    cost = 0; // compute cost
     for (int i = 0; i < points_3d.size(); i++) {
       Eigen::Vector3d pc = pose * points_3d[i]; // 欧式变换，世界坐标变为相机坐标，单位是米
       Eigen::Vector2d proj(fx * pc[0] / pc[2] + cx, fy * pc[1] / pc[2] + cy);  // 世界坐标转为像素坐标的 u = fx * X / Z + cx, v = fy * Y / Z + cy
       double inv_z = 1.0 / pc[2];               // 计算投影点的z坐标的倒数（计算雅可比矩阵使用）
       double inv_z2 = inv_z * inv_z;            // 计算投影点的z坐标的倒数的平方（计算雅可比矩阵使用）
 
-      Eigen::Vector2d e = points_2d[i] - proj;  // 计算投影误差，e是观测点和投影点之间的误差，单位是像素
+      Eigen::Vector2d e = points_2d[i] - proj;  // 计算投影误差，e是观测点和投影点之间的误差，单位是像素, 2x1的向量，表示u和v方向的误差
 
-      cost += e.squaredNorm();
-      Eigen::Matrix<double, 2, 6> J;     // 雅可比矩阵，2x6的矩阵，表示投影误差对SE3增量的导数，后面会用这个矩阵来更新Hessian矩阵和b向量
+      cost += e.squaredNorm();          // 累加所有点的投影误差的平方和，作为当前的cost
+      Eigen::Matrix<double, 2, 6> J;    // 雅可比矩阵，2x6的矩阵，表示投影误差对SE3增量的导数，后面会用这个矩阵来更新Hessian矩阵和b向量
       J << -fx * inv_z,
         0,
         fx * pc[0] * inv_z2,
@@ -234,12 +233,12 @@ void bundleAdjustmentGaussNewton(
         -fy * pc[0] * pc[1] * inv_z2,
         -fy * pc[0] * inv_z;
 
-      H += J.transpose() * J;
-      b += -J.transpose() * e;
+      H += J.transpose() * J;    // 累加所有点的雅可比矩阵的转置乘以雅可比矩阵，得到Hessian矩阵，6x6的矩阵，表示SE3的增量对cost的二阶导数
+      b += -J.transpose() * e;   // 累加所有点的雅可比矩阵的转置乘以误差，得到b向量，6x1的向量，表示SE3的增量对cost的一阶导数
     }
 
     Vector6d dx;
-    dx = H.ldlt().solve(b);
+    dx = H.ldlt().solve(b);    // ldlt 分解，求解线性方程 H * dx = b，得到SE3的增量dx，6x1的向量，表示SE3的增量
 
     if (isnan(dx[0])) {
       cout << "result is nan!" << endl;
@@ -253,11 +252,12 @@ void bundleAdjustmentGaussNewton(
     }
 
     // update your estimation
-    pose = Sophus::SE3d::exp(dx) * pose;
+    pose = Sophus::SE3d::exp(dx) * pose;   // SE3的增量dx左乘当前的pose，得到更新后的pose，SE3d::exp(dx)将增量dx从李代数空间转换到李群空间，得到一个SE3变换，然后左乘当前的pose，得到更新后的pose
     lastCost = cost;
 
     cout << "iteration " << iter << " cost=" << std::setprecision(12) << cost << endl;
-    if (dx.norm() < 1e-6) {
+    if (dx.norm() < 1e-6) {  // convergence, update is small, stop iteration
+      cout << "converged." << endl;
       // converge
       break;
     }
