@@ -114,6 +114,7 @@ void find_feature_matches(const Mat &img_1, const Mat &img_2,
   }
 }
 
+// 像素坐标转相机归一化坐标
 Point2d pixel2cam(const Point2d &p, const Mat &K) {
   return Point2d
     (
@@ -138,7 +139,8 @@ void pose_estimation_2d2d(std::vector<KeyPoint> keypoints_1,
     points2.push_back(keypoints_2[matches[i].trainIdx].pt);
   }
 
-  //-- 计算基础矩阵
+  //-- 计算基础矩阵（匹配的特征点，8点法计算基础矩阵）
+  // 这里基础矩阵没有用到，why？因为我们有内参，所以我们直接计算本质矩阵就好了
   Mat fundamental_matrix;
   fundamental_matrix = findFundamentalMat(points1, points2, cv::FM_8POINT);
   cout << "fundamental_matrix is " << endl << fundamental_matrix << endl;
@@ -158,6 +160,7 @@ void pose_estimation_2d2d(std::vector<KeyPoint> keypoints_1,
 
   //-- 从本质矩阵中恢复旋转和平移信息.
   // 此函数仅在Opencv3中提供
+  // 目的就是求解相机的姿态 R 和 t
   recoverPose(essential_matrix, points1, points2, R, t, focal_length, principal_point);
   cout << "R is " << endl << R << endl;
   cout << "t is " << endl << t << endl;

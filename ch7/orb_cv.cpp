@@ -20,10 +20,10 @@ int main(int argc, char **argv) {
   //-- 初始化
   std::vector<KeyPoint> keypoints_1, keypoints_2;  //特征点
   Mat descriptors_1, descriptors_2;
-  Ptr<FeatureDetector> detector = ORB::create();
-  Ptr<DescriptorExtractor> descriptor = ORB::create();
+  Ptr<FeatureDetector> detector = ORB::create();           // ORB 是 FAST 角点的一个旋转不变版本,同时它也使用了 BRIEF 描述子
+  Ptr<DescriptorExtractor> descriptor = ORB::create();     // ORB 同时是一个特征检测器和描述子提取器,所以这里我们直接使用 ORB::create() 来创建它的实例.
   // ORB 的描述子是二进制字符串,需要使用 Hamming 距离进行匹配
-  Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce-Hamming");  
+  Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce-Hamming");
 
   //-- 第一步:检测 Oriented FAST 角点位置
   chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
@@ -38,7 +38,9 @@ int main(int argc, char **argv) {
   cout << "extract ORB cost = " << time_used.count() << " seconds. " << endl;
 
   Mat outimg1;
-  drawKeypoints(img_1, keypoints_1, outimg1, Scalar::all(-1), DrawMatchesFlags::DEFAULT);
+  drawKeypoints(img_1, keypoints_1, outimg1, 
+    Scalar::all(-1), // 颜色, Scalar::all(-1) 表示随机颜色
+    DrawMatchesFlags::DEFAULT); // DrawMatchesFlags::DEFAULT 表示绘制所有特征点,如果不想绘制特征点的大小和方向,可以使用 DrawMatchesFlags::DRAW_OVER_OUTIMG
   imshow("ORB features", outimg1);
 
   //-- 第三步:对两幅图像中的BRIEF描述子进行匹配，使用 Hamming 距离

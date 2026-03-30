@@ -18,6 +18,8 @@
 using namespace std;
 using namespace cv;
 
+
+// 在两幅图像中匹配特征点，输入为两幅图像，输出为两幅图像中的特征点和匹配关系，使用OpenCV中的ORB特征提取器和暴力匹配器
 void find_feature_matches(
   const Mat &img_1, const Mat &img_2,
   std::vector<KeyPoint> &keypoints_1,
@@ -31,6 +33,7 @@ Point2d pixel2cam(const Point2d &p, const Mat &K);
 typedef vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>> VecVector2d;
 typedef vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> VecVector3d;
 
+// 图优化
 void bundleAdjustmentG2O(
   const VecVector3d &points_3d,
   const VecVector2d &points_2d,
@@ -38,7 +41,7 @@ void bundleAdjustmentG2O(
   Sophus::SE3d &pose
 );
 
-// BA by gauss-newton
+// gauss-newton法实现BA
 void bundleAdjustmentGaussNewton(
   const VecVector3d &points_3d,
   const VecVector2d &points_2d,
@@ -56,31 +59,41 @@ int main(int argc, char **argv) {
   Mat img_2 = imread(argv[2], cv::IMREAD_COLOR);
   assert(img_1.data && img_2.data && "Can not load images!");
 
+  // 计算描述子并对两幅图像中的描述子进行匹配
   vector<KeyPoint> keypoints_1, keypoints_2;
   vector<DMatch> matches;
   find_feature_matches(img_1, img_2, keypoints_1, keypoints_2, matches);
   cout << "一共找到了" << matches.size() << "组匹配点" << endl;
 
   // 建立3D点
-  Mat d1 = imread(argv[3], cv::IMREAD_UNCHANGED);       // 深度图为16位无符号数，单通道图像
-  Mat K = (Mat_<double>(3, 3) << 520.9, 0, 325.1, 0, 521.0, 249.7, 0, 0, 1);
-  vector<Point3f> pts_3d;
-  vector<Point2f> pts_2d;
+  Mat d1 = imread(argv[3], cv::IMREAD_UNCHANGED);      // 深度图为16位无符号数，单通道图像
+  Mat K = (Mat_<double>(3, 3) << 520.9, 0, 325.1, 0, 521.0, 249.7, 0, 0, 1);    // 相机内参
+  vector<Point3f> pts_3d; // 3D点, 单位是米，世界坐标系下的坐标，z轴朝前，x轴朝右，y轴朝下
+  vector<Point2f> pts_2d; // 2D点，单位是像素，图像坐标系下的坐标，z轴朝前，x轴朝右，y轴朝下
   for (DMatch m:matches) {
-    ushort d = d1.ptr<unsigned short>(int(keypoints_1[m.queryIdx].pt.y))[int(keypoints_1[m.queryIdx].pt.x)];
+    ushort d = d1.ptr<unsigned short>(int(keypoints_1[m.queryIdx].pt.y))[int(keypoints_1[m.queryIdx].pt.x)]; // 深度值
     if (d == 0)   // bad depth
       continue;
-    float dd = d / 5000.0;
-    Point2d p1 = pixel2cam(keypoints_1[m.queryIdx].pt, K);
-    pts_3d.push_back(Point3f(p1.x * dd, p1.y * dd, dd));
-    pts_2d.push_back(keypoints_2[m.trainIdx].pt);
+    float dd = d / 5000.0; // 深度值单位是毫米，转为米
+    Point2d p1 = pixel2cam(keypoints_1[m.queryIdx].pt, K); // pt为像素坐标，根据相机内参转为归一化世界坐标X/Z 和Y/Z
+    pts_3d.push_back(Point3f(p1.x * dd, p1.y * dd, dd));   // img1的世界坐标
+    pts_2d.push_back(keypoints_2[m.trainIdx].pt);          // img1的像素坐标
   }
 
   cout << "3d-2d pairs: " << pts_3d.size() << endl;
 
+  /********************************************************************
+   * 调用OpenCV的PnP函数求解相机位姿
+   ********************************************************************/
   chrono::steady_clock::time_point t1 = chrono::steady_clock::now();
   Mat r, t;
-  solvePnP(pts_3d, pts_2d, K, Mat(), r, t, false); // 调用OpenCV 的 PnP 求解，可选择EPNP，DLS等方法
+  // 调用OpenCV 的 PnP:3D-2D 求解，可选择EPNP，DLS等方法
+  solvePnP(pts_3d, pts_2d, K,
+     Mat(),  // 无畸变参数，假设没有畸变
+     r,      // 输出旋转向量，表示相机坐标系到世界坐标系的旋转
+     t,      // 输出平移向量，表示相机坐标系到世界坐标系的平移
+     false   // 不使用初始值，直接求解
+  );
   Mat R;
   cv::Rodrigues(r, R); // r为旋转向量形式，用Rodrigues公式转换为矩阵
   chrono::steady_clock::time_point t2 = chrono::steady_clock::now();
@@ -90,25 +103,32 @@ int main(int argc, char **argv) {
   cout << "R=" << endl << R << endl;
   cout << "t=" << endl << t << endl;
 
+
   VecVector3d pts_3d_eigen;
   VecVector2d pts_2d_eigen;
   for (size_t i = 0; i < pts_3d.size(); ++i) {
-    pts_3d_eigen.push_back(Eigen::Vector3d(pts_3d[i].x, pts_3d[i].y, pts_3d[i].z));
+    pts_3d_eigen.push_back(Eigen::Vector3d(pts_3d[i].x, pts_3d[i].y, pts_3d[i].z)); // opencv的Mat和Eigen的Matrix之间转换需要手动转换
     pts_2d_eigen.push_back(Eigen::Vector2d(pts_2d[i].x, pts_2d[i].y));
   }
 
+  /********************************************************************
+   * 手写BA优化，使用高斯牛顿法求解非线性优化问题
+   ********************************************************************/
   cout << "calling bundle adjustment by gauss newton" << endl;
-  Sophus::SE3d pose_gn;
+  Sophus::SE3d pose_gn; // Sophus库中SE3d类型表示位姿，包含旋转和平移，默认初始化为单位矩阵(待求解的目标)
   t1 = chrono::steady_clock::now();
-  bundleAdjustmentGaussNewton(pts_3d_eigen, pts_2d_eigen, K, pose_gn);
+  bundleAdjustmentGaussNewton(pts_3d_eigen, pts_2d_eigen, K, pose_gn); // 调用自己实现的BA函数，输入为3D-2D点对，输出为优化后的位姿
   t2 = chrono::steady_clock::now();
   time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
   cout << "solve pnp by gauss newton cost time: " << time_used.count() << " seconds." << endl;
 
+  /********************************************************************
+   * 手写BA优化，使用g2o库求解非线性优化问题
+   ********************************************************************/
   cout << "calling bundle adjustment by g2o" << endl;
-  Sophus::SE3d pose_g2o;
+  Sophus::SE3d pose_g2o; // g2o优化后的位姿，初始值为单位变换，优化过程中会更新这个值
   t1 = chrono::steady_clock::now();
-  bundleAdjustmentG2O(pts_3d_eigen, pts_2d_eigen, K, pose_g2o);
+  bundleAdjustmentG2O(pts_3d_eigen, pts_2d_eigen, K, pose_g2o); // 调用g2o库实现的BA函数，输入为3D-2D点对，输出为优化后的位姿
   t2 = chrono::steady_clock::now();
   time_used = chrono::duration_cast<chrono::duration<double>>(t2 - t1);
   cout << "solve pnp by g2o cost time: " << time_used.count() << " seconds." << endl;
@@ -128,6 +148,7 @@ void find_feature_matches(const Mat &img_1, const Mat &img_2,
   // Ptr<FeatureDetector> detector = FeatureDetector::create ( "ORB" );
   // Ptr<DescriptorExtractor> descriptor = DescriptorExtractor::create ( "ORB" );
   Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce-Hamming");
+
   //-- 第一步:检测 Oriented FAST 角点位置
   detector->detect(img_1, keypoints_1);
   detector->detect(img_2, keypoints_2);
@@ -165,40 +186,41 @@ void find_feature_matches(const Mat &img_1, const Mat &img_2,
 Point2d pixel2cam(const Point2d &p, const Mat &K) {
   return Point2d
     (
-      (p.x - K.at<double>(0, 2)) / K.at<double>(0, 0),
+      (p.x - K.at<double>(0, 2)) / K.at<double>(0, 0), // 像素坐标转相机归一化坐标的公式，x' = (x - cx) / fx, y' = (y - cy) / fy
       (p.y - K.at<double>(1, 2)) / K.at<double>(1, 1)
     );
 }
 
 void bundleAdjustmentGaussNewton(
-  const VecVector3d &points_3d,
-  const VecVector2d &points_2d,
-  const Mat &K,
-  Sophus::SE3d &pose) {
-  typedef Eigen::Matrix<double, 6, 1> Vector6d;
-  const int iterations = 10;
-  double cost = 0, lastCost = 0;
+  const VecVector3d &points_3d,  // 世界坐标系下的3D坐标，单位是米
+  const VecVector2d &points_2d,  // 图像坐标系下的2D坐标，单位是像素
+  const Mat &K,                  // 相机内参矩阵
+  Sophus::SE3d &pose             // 特殊欧式群SE3表示位姿，包含旋转和平移，优化过程中会更新这个值
+) {
+  typedef Eigen::Matrix<double, 6, 1> Vector6d; // 6维向量，表示SE3的增量
+  const int iterations = 10;                    // 迭代次数
+  double cost = 0, lastCost = 0;                // 当前的cost和上一次的cost
   double fx = K.at<double>(0, 0);
-  double fy = K.at<double>(1, 1);
-  double cx = K.at<double>(0, 2);
+  double fy = K.at<double>(1, 1);       
+  double cx = K.at<double>(0, 2);       
   double cy = K.at<double>(1, 2);
 
   for (int iter = 0; iter < iterations; iter++) {
-    Eigen::Matrix<double, 6, 6> H = Eigen::Matrix<double, 6, 6>::Zero();
-    Vector6d b = Vector6d::Zero();
+    Eigen::Matrix<double, 6, 6> H = Eigen::Matrix<double, 6, 6>::Zero();    // Hessian矩阵，6x6的矩阵，表示SE3的增量对cost的二阶导数
+    Vector6d b = Vector6d::Zero();    // b向量，6维的向量，表示SE3的增量对cost的一阶导数
 
     cost = 0;
     // compute cost
     for (int i = 0; i < points_3d.size(); i++) {
-      Eigen::Vector3d pc = pose * points_3d[i];
-      double inv_z = 1.0 / pc[2];
-      double inv_z2 = inv_z * inv_z;
-      Eigen::Vector2d proj(fx * pc[0] / pc[2] + cx, fy * pc[1] / pc[2] + cy);
+      Eigen::Vector3d pc = pose * points_3d[i]; // 欧式变换，世界坐标变为相机坐标，单位是米
+      Eigen::Vector2d proj(fx * pc[0] / pc[2] + cx, fy * pc[1] / pc[2] + cy);  // 世界坐标转为像素坐标的 u = fx * X / Z + cx, v = fy * Y / Z + cy
+      double inv_z = 1.0 / pc[2];               // 计算投影点的z坐标的倒数（计算雅可比矩阵使用）
+      double inv_z2 = inv_z * inv_z;            // 计算投影点的z坐标的倒数的平方（计算雅可比矩阵使用）
 
-      Eigen::Vector2d e = points_2d[i] - proj;
+      Eigen::Vector2d e = points_2d[i] - proj;  // 计算投影误差，e是观测点和投影点之间的误差，单位是像素
 
       cost += e.squaredNorm();
-      Eigen::Matrix<double, 2, 6> J;
+      Eigen::Matrix<double, 2, 6> J;     // 雅可比矩阵，2x6的矩阵，表示投影误差对SE3增量的导数，后面会用这个矩阵来更新Hessian矩阵和b向量
       J << -fx * inv_z,
         0,
         fx * pc[0] * inv_z2,
