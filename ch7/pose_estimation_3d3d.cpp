@@ -28,12 +28,14 @@ void find_feature_matches(
 // 像素坐标转相机归一化坐标
 Point2d pixel2cam(const Point2d &p, const Mat &K);
 
+// 3D-3D的位姿估计
 void pose_estimation_3d3d(
   const vector<Point3f> &pts1,
   const vector<Point3f> &pts2,
   Mat &R, Mat &t
 );
 
+// BA优化
 void bundleAdjustment(
   const vector<Point3f> &points_3d,
   const vector<Point3f> &points_2d,
@@ -41,6 +43,9 @@ void bundleAdjustment(
 );
 
 /// vertex and edges used in g2o ba
+// class A : public B<C, D> 表示A类继承自B类，B类是一个模板类，C和D是B类的模板参数，A类需要实现B类的纯虚函数才能实例化对象
+// 注意三种 public protected private 的区别，public表示公有成员，子类和外部都可以访问；protected表示受保护成员，子类可以访问，但外部不能访问；
+// private表示私有成员，只有类内部可以访问，子类和外部都不能访问。
 class VertexPose : public g2o::BaseVertex<6, Sophus::SE3d> {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
@@ -106,7 +111,7 @@ int main(int argc, char **argv) {
   // 建立3D点
   Mat depth1 = imread(argv[3], cv::IMREAD_UNCHANGED);       // 深度图为16位无符号数，单通道图像
   Mat depth2 = imread(argv[4], cv::IMREAD_UNCHANGED);       // 深度图为16位无符号数，单通道图像
-  Mat K = (Mat_<double>(3, 3) << 520.9, 0, 325.1, 0, 521.0, 249.7, 0, 0, 1);
+  Mat K = (Mat_<double>(3, 3) << 520.9, 0, 325.1, 0, 521.0, 249.7, 0, 0, 1);   // 相机内参
   vector<Point3f> pts1, pts2;
 
   for (DMatch m:matches) {
@@ -116,12 +121,15 @@ int main(int argc, char **argv) {
       continue;
     Point2d p1 = pixel2cam(keypoints_1[m.queryIdx].pt, K);
     Point2d p2 = pixel2cam(keypoints_2[m.trainIdx].pt, K);
-    float dd1 = float(d1) / 5000.0;
+    float dd1 = float(d1) / 5000.0; // 深度值单位是毫米，转为米
     float dd2 = float(d2) / 5000.0;
-    pts1.push_back(Point3f(p1.x * dd1, p1.y * dd1, dd1));
-    pts2.push_back(Point3f(p2.x * dd2, p2.y * dd2, dd2));
+    pts1.push_back(Point3f(p1.x * dd1, p1.y * dd1, dd1)); // img1的世界坐标
+    pts2.push_back(Point3f(p2.x * dd2, p2.y * dd2, dd2)); // img2的世界坐标
   }
 
+  /********************************************************************
+   * SVD分解求解ICP问题
+   ********************************************************************/
   cout << "3d-3d pairs: " << pts1.size() << endl;
   Mat R, t;
   pose_estimation_3d3d(pts1, pts2, R, t);
@@ -133,6 +141,10 @@ int main(int argc, char **argv) {
 
   cout << "calling bundle adjustment" << endl;
 
+
+  /********************************************************************
+   * BA优化求解ICP问题
+   ********************************************************************/
   bundleAdjustment(pts1, pts2, R, t);
 
   // verify p1 = R * p2 + t
@@ -200,10 +212,10 @@ Point2d pixel2cam(const Point2d &p, const Mat &K) {
   );
 }
 
-void pose_estimation_3d3d(const vector<Point3f> &pts1,
-                          const vector<Point3f> &pts2,
+void pose_estimation_3d3d(const vector<Point3f> &pts1, // img1的世界坐标
+                          const vector<Point3f> &pts2, // img2的世界坐标
                           Mat &R, Mat &t) {
-  Point3f p1, p2;     // center of mass
+  Point3f p1, p2;     // center of mass 质心
   int N = pts1.size();
   for (int i = 0; i < N; i++) {
     p1 += pts1[i];
@@ -211,7 +223,7 @@ void pose_estimation_3d3d(const vector<Point3f> &pts1,
   }
   p1 = Point3f(Vec3f(p1) / N);
   p2 = Point3f(Vec3f(p2) / N);
-  vector<Point3f> q1(N), q2(N); // remove the center
+  vector<Point3f> q1(N), q2(N); // remove the center 去中心化，得到质心坐标系下的坐标
   for (int i = 0; i < N; i++) {
     q1[i] = pts1[i] - p1;
     q2[i] = pts2[i] - p2;
@@ -233,7 +245,7 @@ void pose_estimation_3d3d(const vector<Point3f> &pts1,
   cout << "V=" << V << endl;
 
   Eigen::Matrix3d R_ = U * (V.transpose());
-  if (R_.determinant() < 0) {
+  if (R_.determinant() < 0) { // 如果 det(R) < 0, 则说明 R 是一个反射矩阵，需要修正, SVD分解得到的R可能是一个反射矩阵
     R_ = -R_;
   }
   Eigen::Vector3d t_ = Eigen::Vector3d(p1.x, p1.y, p1.z) - R_ * Eigen::Vector3d(p2.x, p2.y, p2.z);
