@@ -1,6 +1,13 @@
 //
 // Created by Xiang on 2017/12/19.
 //
+/**
+ * https://zhuanlan.zhihu.com/p/660866515
+ * LK的两个假设：1）图像亮度不变；2）相邻像素的运动一致
+ * LK光流中，运动速度不是物理速度，而是像素位移（pixel displacement），一个点在两帧之间移动了多少像素
+ * LK 的核心是假设（泰勒展开）：位移很小，可以线性化，个近似只在 dx, dy 很小（<~1像素）时成立，相当于一个小窗口，拍照
+ * 
+ */
 
 #include <opencv2/opencv.hpp>
 #include <string>
@@ -23,9 +30,9 @@ public:
         const vector<KeyPoint> &kp1_,
         vector<KeyPoint> &kp2_,
         vector<bool> &success_,
-        bool inverse_ = true, bool has_initial_ = false) :
-        img1(img1_), img2(img2_), kp1(kp1_), kp2(kp2_), success(success_), inverse(inverse_),
-        has_initial(has_initial_) {}
+        bool inverse_ = true,
+        bool has_initial_ = false) :
+        img1(img1_), img2(img2_), kp1(kp1_), kp2(kp2_), success(success_), inverse(inverse_), has_initial(has_initial_) {}
 
     void calculateOpticalFlow(const Range &range);
 
@@ -79,12 +86,12 @@ void OpticalFlowMultiLevel(
 
 /**
  * get a gray scale value from reference image (bi-linear interpolated)
+ * 使用用双线性插值，在 非整数坐标 (x, y) 处，计算图像的灰度值
  * @param img
  * @param x
  * @param y
  * @return the interpolated value of this pixel
  */
-
 inline float GetPixelValue(const cv::Mat &img, float x, float y) {
     // boundary check
     if (x < 0) x = 0;
@@ -103,6 +110,7 @@ inline float GetPixelValue(const cv::Mat &img, float x, float y) {
     + xx * yy * img.at<uchar>(y_a1, x_a1);
 }
 
+// 我们使用两张来自Euroc数据集的示例图像，在第一张图像中提取角点，然后用光流追踪它们在第二张图像中的位置。
 int main(int argc, char **argv) {
 
     // images, note they are CV_8UC1, not CV_8UC3
@@ -111,7 +119,7 @@ int main(int argc, char **argv) {
 
     // key points, using GFTT here.
     vector<KeyPoint> kp1;
-    Ptr<GFTTDetector> detector = GFTTDetector::create(500, 0.01, 20); // maximum 500 keypoints
+    Ptr<GFTTDetector> detector = GFTTDetector::create(500, 0.01, 20); // GFTT 角点检测器，maximum 500 keypoints
     detector->detect(img1, kp1);
 
     // now lets track these key points in the second image
@@ -180,28 +188,33 @@ void OpticalFlowSingleLevel(
     const Mat &img1,
     const Mat &img2,
     const vector<KeyPoint> &kp1,
-    vector<KeyPoint> &kp2,
-    vector<bool> &success,
-    bool inverse, bool has_initial) {
-    kp2.resize(kp1.size());
+    vector<KeyPoint> &kp2,  // output keypoints, if not empty, use them as initial guess
+    vector<bool> &success,  // output true if a keypoint is tracked successfully
+    bool inverse,
+    bool has_initial) {
+    kp2.resize(kp1.size()); 
     success.resize(kp1.size());
-    OpticalFlowTracker tracker(img1, img2, kp1, kp2, success, inverse, has_initial);
+    OpticalFlowTracker tracker(img1, img2, kp1, kp2, success, inverse, has_initial);  // create a tracker instance
+    // parallel_for_(Range(start, end), func);
+    // opencv并行工具，对 [start, end) 区间做并行循环，每一段交给 func 处理
     parallel_for_(Range(0, kp1.size()),
-                  std::bind(&OpticalFlowTracker::calculateOpticalFlow, &tracker, placeholders::_1));
+                  std::bind(&OpticalFlowTracker::calculateOpticalFlow, &tracker, placeholders::_1)); // 把 成员函数calculateOpticalFlow 和 对象tracker 绑定，第一个参数由调用者传入（这里是 Range），等价于 每一块调用 tracker.calculateOpticalFlow(range)
 }
 
-void OpticalFlowTracker::calculateOpticalFlow(const Range &range) {
+// 对 kp1 中的每个点，在 img2 里找一个 (dx, dy)，让两个 patch 最相似（最小二乘）
+void OpticalFlowTracker::calculateOpticalFlow(const Range &range) {  // 计算 range 内的 keypoints 的光流
     // parameters
-    int half_patch_size = 4;
+    int half_patch_size = 4;  // patch size: 8x8，所以半边是4
     int iterations = 10;
     for (size_t i = range.start; i < range.end; i++) {
         auto kp = kp1[i];
         double dx = 0, dy = 0; // dx,dy need to be estimated
-        if (has_initial) {
+        if (has_initial) {  // 是否使用“已有初值”（金字塔用）
             dx = kp2[i].pt.x - kp.pt.x;
             dy = kp2[i].pt.y - kp.pt.y;
         }
 
+        // 最小化光度误差，高斯牛顿迭代
         double cost = 0, lastCost = 0;
         bool succ = true; // indicate if this point succeeded
 
@@ -222,9 +235,11 @@ void OpticalFlowTracker::calculateOpticalFlow(const Range &range) {
 
             // compute cost and jacobian
             for (int x = -half_patch_size; x < half_patch_size; x++)
-                for (int y = -half_patch_size; y < half_patch_size; y++) {
+                for (int y = -half_patch_size; y < half_patch_size; y++) {  // 在关键点周围取一个 8 × 8 patch（因为 half_patch_size = 4）
+                    // 计算误差
                     double error = GetPixelValue(img1, kp.pt.x + x, kp.pt.y + y) -
-                                   GetPixelValue(img2, kp.pt.x + x + dx, kp.pt.y + y + dy);;  // Jacobian
+                                   GetPixelValue(img2, kp.pt.x + x + dx, kp.pt.y + y + dy);
+                    // 计算雅可比矩阵
                     if (inverse == false) {
                         J = -1.0 * Eigen::Vector2d(
                             0.5 * (GetPixelValue(img2, kp.pt.x + dx + x + 1, kp.pt.y + dy + y) -
