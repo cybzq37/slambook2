@@ -5,11 +5,27 @@
 #include "ceres/ceres.h"
 #include "rotation.h"
 
+/**
+ * 重投影误差
+ * @param observation_x 观测的x坐标
+ * @param observation_y 观测的y坐标
+ */
 class SnavelyReprojectionError {
 public:
     SnavelyReprojectionError(double observation_x, double observation_y) : observed_x(observation_x),
                                                                            observed_y(observation_y) {}
 
+    /**
+     * 重投影误差
+     * 1. 将三维点绕相机参数中的角轴旋转
+     * 2. 将旋转后的点加上相机参数中的平移
+     * 3. 将旋转后的点投影到图像平面
+     * 4. 计算投影点与观测点的误差
+     * @param camera 相机参数
+     * @param point 三维点
+     * @param predictions 预测的二维点
+     * @return 是否成功
+     */
     template<typename T>
     bool operator()(const T *const camera,
                     const T *const point,
@@ -23,6 +39,18 @@ public:
         return true;
     }
 
+    /**
+     * 将三维点投影到图像平面
+     * 1. 将三维点绕相机参数中的角轴旋转，得到旋转后的点
+     * 2. 将旋转后的点加上相机参数中的平移，得到平移后的点
+     * 3. 将平移后的点除以深度，得到归一化平面上的点
+     * 4. 应用径向畸变，得到畸变后的点
+     * 5. 将畸变后的点乘以焦距，得到投影点
+     * @param camera 相机参数
+     * @param point 三维点
+     * @param predictions 预测的二维点
+     * @return 是否成功
+     */
     // camera : 9 dims array
     // [0-2] : angle-axis rotation
     // [3-5] : translateion
@@ -31,6 +59,7 @@ public:
     // predictions : 2D predictions with center of the image plane.
     template<typename T>
     static inline bool CamProjectionWithDistortion(const T *camera, const T *point, T *predictions) {
+        // 将三维点绕相机参数中的角轴旋转
         // Rodrigues' formula
         T p[3];
         AngleAxisRotatePoint(camera, point, p);

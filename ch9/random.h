@@ -4,12 +4,21 @@
 #include <math.h>
 #include <stdlib.h>
 
+/**
+ * 生成一个0到1之间的随机数
+ * @return 随机数
+ */
+// inline关键字用于建议编译器将该函数在调用处进行内联展开，从而减少函数调用的开销。
 inline double RandDouble()
 {
     double r = static_cast<double>(rand());
     return r / RAND_MAX;
 }
 
+/**
+ * 生成一个标准正态分布的随机数
+ * @return 随机数
+ */
 inline double RandNormal()
 {
     double x1, x2, w;
