@@ -28,12 +28,12 @@ int main(int argc, char **argv) {
     }
 
     // 设定g2o
-    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 6>> BlockSolverType;
-    typedef g2o::LinearSolverEigen<BlockSolverType::PoseMatrixType> LinearSolverType;
+    typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 6>> BlockSolverType;  // pose dimension is 6, landmark dimension is 6
+    typedef g2o::LinearSolverEigen<BlockSolverType::PoseMatrixType> LinearSolverType; // 线性求解器类型
     auto solver = new g2o::OptimizationAlgorithmLevenberg(
         std::make_unique<BlockSolverType>(std::make_unique<LinearSolverType>()));
     g2o::SparseOptimizer optimizer;     // 图模型
-    optimizer.setAlgorithm(solver);   // 设置求解器
+    optimizer.setAlgorithm(solver);     // 设置求解器
     optimizer.setVerbose(true);       // 打开调试输出
 
     int vertexCnt = 0, edgeCnt = 0; // 顶点和边的数量
