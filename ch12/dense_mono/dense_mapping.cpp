@@ -122,11 +122,11 @@ bool updateDepthFilter(
  */
 double NCC(const Mat &ref, const Mat &curr, const Vector2d &pt_ref, const Vector2d &pt_curr);
 
-// 双线性灰度插值
+// 双线性灰度插值（在非整数像素坐标（x,y）处，估计灰度值）
 inline double getBilinearInterpolatedValue(const Mat &img, const Vector2d &pt) {
-    uchar *d = &img.data[int(pt(1, 0)) * img.step + int(pt(0, 0))];
-    double xx = pt(0, 0) - floor(pt(0, 0));
-    double yy = pt(1, 0) - floor(pt(1, 0));
+    uchar *d = &img.data[int(pt(1, 0)) * img.step + int(pt(0, 0))];  // pt(0, 0)为x, pt(1,0)为y，这里的 img.step 是行跨度（以字节为单位），而不是列数
+    double xx = pt(0, 0) - floor(pt(0, 0));  // 小数部分, 点在当前像素格里横向的位置
+    double yy = pt(1, 0) - floor(pt(1, 0));  // 小数部分, 点在当前像素格里纵向的位置
     return ((1 - xx) * (1 - yy) * double(d[0]) +
             xx * (1 - yy) * double(d[1]) +
             (1 - xx) * yy * double(d[img.step]) +
@@ -138,7 +138,7 @@ inline double getBilinearInterpolatedValue(const Mat &img, const Vector2d &pt) {
 // 显示估计的深度图
 void plotDepth(const Mat &depth_truth, const Mat &depth_estimate);
 
-// 像素到相机坐标系
+// 像素坐标转到相机坐标
 inline Vector3d px2cam(const Vector2d px) {
     return Vector3d(
         (px(0, 0) - cx) / fx,
@@ -147,7 +147,7 @@ inline Vector3d px2cam(const Vector2d px) {
     );
 }
 
-// 相机坐标系到像素
+// 相机坐标转到像素坐标
 inline Vector2d cam2px(const Vector3d p_cam) {
     return Vector2d(
         p_cam(0, 0) * fx / p_cam(2, 0) + cx,
@@ -183,7 +183,8 @@ int main(int argc, char **argv) {
     vector<string> color_image_files;
     vector<SE3d> poses_TWC;
     Mat ref_depth;
-    bool ret = readDatasetFiles(argv[1], color_image_files, poses_TWC, ref_depth);
+    // TWC表示相机到世界坐标系，TCW表示世界到相机坐标系
+    bool ret = readDatasetFiles(argv[1], color_image_files, poses_TWC, ref_depth); 
     if (ret == false) {
         cout << "Reading image files failed!" << endl;
         return -1;
@@ -192,18 +193,18 @@ int main(int argc, char **argv) {
 
     // 第一张图
     Mat ref = imread(color_image_files[0], 0);                // gray-scale image
-    SE3d pose_ref_TWC = poses_TWC[0];
+    SE3d pose_ref_TWC = poses_TWC[0];    // 第一张图的位姿（相机坐标）
     double init_depth = 3.0;    // 深度初始值
     double init_cov2 = 3.0;     // 方差初始值
-    Mat depth(height, width, CV_64F, init_depth);             // 深度图
-    Mat depth_cov2(height, width, CV_64F, init_cov2);         // 深度图方差
+    Mat depth(height, width, CV_64F, init_depth);       // 深度图
+    Mat depth_cov2(height, width, CV_64F, init_cov2);   // 深度图方差（初始化为3.0）
 
-    for (int index = 1; index < color_image_files.size(); index++) {
+    for (int index = 1; index < color_image_files.size(); index++) {  // 从第二张图开始
         cout << "*** loop " << index << " ***" << endl;
-        Mat curr = imread(color_image_files[index], 0);
+        Mat curr = imread(color_image_files[index], 0); // 0表示以灰度方式读取
         if (curr.data == nullptr) continue;
-        SE3d pose_curr_TWC = poses_TWC[index];
-        SE3d pose_T_C_R = pose_curr_TWC.inverse() * pose_ref_TWC;   // 坐标转换关系： T_C_W * T_W_R = T_C_R
+        SE3d pose_curr_TWC = poses_TWC[index];  // 获取 TWC 位姿信息
+        SE3d pose_T_C_R = pose_curr_TWC.inverse() * pose_ref_TWC;   // 坐标转换关系： T_C_W * T_W_R = T_C_R，把第一帧中的点投影到当前帧，ref坐标系-》世界-》curr坐标系
         update(ref, curr, pose_T_C_R, depth, depth_cov2);
         evaludateDepth(ref_depth, depth);
         plotDepth(ref_depth, depth);
@@ -227,7 +228,7 @@ bool readDatasetFiles(
     if (!fin) return false;
 
     while (!fin.eof()) {
-        // 数据格式：图像文件名 tx, ty, tz, qx, qy, qz, qw ，注意是 TWC 而非 TCW
+        // 数据格式：图像文件名 tx, ty, tz, qx, qy, qz, qw （注意：是 TWC 而非 TCW）  tx ty tz 是平移，qx qy qz qw 是四元数
         string image;
         fin >> image;
         double data[7];
@@ -244,7 +245,7 @@ bool readDatasetFiles(
 
     // load reference depth
     fin.open(path + "/depthmaps/scene_000.depth");
-    ref_depth = cv::Mat(height, width, CV_64F);
+    ref_depth = cv::Mat(height, width, CV_64F); // 64位浮点数
     if (!fin) return false;
     for (int y = 0; y < height; y++)
         for (int x = 0; x < width; x++) {
@@ -258,14 +259,14 @@ bool readDatasetFiles(
 
 // 对整个深度图进行更新
 bool update(const Mat &ref, const Mat &curr, const SE3d &T_C_R, Mat &depth, Mat &depth_cov2) {
-    for (int x = boarder; x < width - boarder; x++)
+    for (int x = boarder; x < width - boarder; x++)  //boarder为边缘宽度
         for (int y = boarder; y < height - boarder; y++) {
-            // 遍历每个像素
+            // 遍历每个像素 先拿到第y行的指针，在获取第x列的值，无边界检查，效率更高
             if (depth_cov2.ptr<double>(y)[x] < min_cov || depth_cov2.ptr<double>(y)[x] > max_cov) // 深度已收敛或发散
                 continue;
             // 在极线上搜索 (x,y) 的匹配
-            Vector2d pt_curr;
-            Vector2d epipolar_direction;
+            Vector2d pt_curr;  // 当前帧中匹配点的位置
+            Vector2d epipolar_direction; // 极线方向（单位向量），用于后续更新深度滤波器
             bool ret = epipolarSearch(
                 ref,
                 curr,
@@ -291,17 +292,22 @@ bool update(const Mat &ref, const Mat &curr, const SE3d &T_C_R, Mat &depth, Mat 
 // 极线搜索
 // 方法见书 12.2 12.3 两节
 bool epipolarSearch(
-    const Mat &ref, const Mat &curr,
-    const SE3d &T_C_R, const Vector2d &pt_ref,
-    const double &depth_mu, const double &depth_cov,
-    Vector2d &pt_curr, Vector2d &epipolar_direction) {
-    Vector3d f_ref = px2cam(pt_ref);
-    f_ref.normalize();
-    Vector3d P_ref = f_ref * depth_mu;    // 参考帧的 P 向量
+    const Mat &ref, // 参考帧
+    const Mat &curr, // 当前帧
+    const SE3d &T_C_R, // 参考帧到当前帧的位姿
+    const Vector2d &pt_ref,  // 参考帧中点的位置
+    const double &depth_mu,  // 深度均值
+    const double &depth_cov, // 深度方差
+    Vector2d &pt_curr, // 当前帧中匹配点的位置
+    Vector2d &epipolar_direction // 极线方向（单位向量），用于后续更新深度滤波器
+) {
+    Vector3d f_ref = px2cam(pt_ref); // 参考帧中的点位置，转为相机坐标系
+    f_ref.normalize(); // 归一化为单位向量
+    Vector3d P_ref = f_ref * depth_mu;    // 参考帧的 P 向量，方向 x 深度 = 三维坐标点
 
     Vector2d px_mean_curr = cam2px(T_C_R * P_ref); // 按深度均值投影的像素
-    double d_min = depth_mu - 3 * depth_cov, d_max = depth_mu + 3 * depth_cov;
-    if (d_min < 0.1) d_min = 0.1;
+    double d_min = depth_mu - 3 * depth_cov, d_max = depth_mu + 3 * depth_cov;  // 深度均值的 3 倍方差范围内搜索
+    if (d_min < 0.1) d_min = 0.1;  // 深度不可能为负数，且小于0.1m的点我们不考虑了
     Vector2d px_min_curr = cam2px(T_C_R * (f_ref * d_min));    // 按最小深度投影的像素
     Vector2d px_max_curr = cam2px(T_C_R * (f_ref * d_max));    // 按最大深度投影的像素
 
@@ -314,7 +320,7 @@ bool epipolarSearch(
     // 取消此句注释以显示极线（线段）
     // showEpipolarLine( ref, curr, pt_ref, px_min_curr, px_max_curr );
 
-    // 在极线上搜索，以深度均值点为中心，左右各取半长度
+    // 在极线上搜索，以深度均值点为中心，左右各取半长度（块匹配）
     double best_ncc = -1.0;
     Vector2d best_px_curr;
     for (double l = -half_length; l <= half_length; l += 0.7) { // l+=sqrt(2)
@@ -335,8 +341,11 @@ bool epipolarSearch(
 }
 
 double NCC(
-    const Mat &ref, const Mat &curr,
-    const Vector2d &pt_ref, const Vector2d &pt_curr) {
+    const Mat &ref,  // 参考帧
+    const Mat &curr, // 当前帧
+    const Vector2d &pt_ref, // 参考帧中点的位置
+    const Vector2d &pt_curr // 当前帧中点的位置
+) {
     // 零均值-归一化互相关
     // 先算均值
     double mean_ref = 0, mean_curr = 0;
@@ -346,7 +355,7 @@ double NCC(
             double value_ref = double(ref.ptr<uchar>(int(y + pt_ref(1, 0)))[int(x + pt_ref(0, 0))]) / 255.0;
             mean_ref += value_ref;
 
-            double value_curr = getBilinearInterpolatedValue(curr, pt_curr + Vector2d(x, y));
+            double value_curr = getBilinearInterpolatedValue(curr, pt_curr + Vector2d(x, y)); // 当前帧的值需要双线性插值
             mean_curr += value_curr;
 
             values_ref.push_back(value_ref);

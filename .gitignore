@@ -79,3 +79,6 @@ cmake-build-*/  # CLion 默认生成的编译目录
 *.qbs
 *.user
 *.cmake
+
+#
+test_data/
