@@ -205,11 +205,14 @@ int main(int argc, char **argv) {
         if (curr.data == nullptr) continue;
         SE3d pose_curr_TWC = poses_TWC[index];  // 获取 TWC 位姿信息
         SE3d pose_T_C_R = pose_curr_TWC.inverse() * pose_ref_TWC;   // 坐标转换关系： T_C_W * T_W_R = T_C_R，把第一帧中的点投影到当前帧，ref坐标系-》世界-》curr坐标系
+        
+        /** 下面两步是最关键的步骤 */
         update(ref, curr, pose_T_C_R, depth, depth_cov2); // 更新深度图，depth 和 depth_cov2 默认都是初始值，都会被更新
-        evaludateDepth(ref_depth, depth);  // 评测深度估计的结果
+        evaludateDepth(ref_depth, depth);  // 评测深度估计的结果（仅仅用来评测）
+
         plotDepth(ref_depth, depth); // 显示深度图
         imshow("image", curr);
-        waitKey(1);
+        waitKey(1); // 等待 1ms，显示图像
     }
 
     cout << "estimation returns, saving depth map ..." << endl;
@@ -473,9 +476,13 @@ bool updateDepthFilter(
     f_curr.normalize(); // 归一化为单位向量
 
     // 使用三角化计算深度
-    // 基本方程：d_ref * f_ref = d_cur * (R_RC * f_cur) + t_RC
-    // 其中 f2 = R_RC * f_cur
-    // 转化为线性方程组：
+    // 参考帧： p_ref = d_ref * f_ref （d_ref 是参考帧中点的深度，f_ref 是参考帧中点的单位方向向量）
+    // 当前帧：p_cur = d_cur * f_cur （d_cur 是当前帧中点的深度，f_cur 是当前帧中点的单位方向向量）
+    // 两帧之间的关系：p_ref = R_RC * p_cur + t_RC （R_RC 是参考帧到当前帧的旋转矩阵，t_RC 是参考帧到当前帧的平移向量）
+    // 将 p_ref 和 p_cur 代入关系式，得到：d_ref * f_ref = R_RC * (d_cur * f_cur) + t_RC
+    // 基本方程：d_ref * f_ref = d_cur * (R_RC * f_cur) + t_RC   d_cur为标量，可以交换
+    // 令 f2 = R_RC * f_cur， 则 d_ref * f_ref = d_cur * f2 + t_RC
+    // 转化为线性方程组：求解 d_ref 和 d_cur
     // [ f_ref^T f_ref,  -f_ref^T f2   ] [d_ref]   [f_ref^T t]
     // [ f2^T f_ref,     -f2^T f2      ] [d_cur] = [f2^T t   ]
     
@@ -493,16 +500,23 @@ bool updateDepthFilter(
     // 求解线性方程组，得到两帧中的深度值
     Vector2d ans = A.inverse() * b;
     
-    Vector3d xm = ans[0] * f_ref;      // 参考帧中的三维点
-    Vector3d xn = t + ans[1] * f2;     // 当前帧中的三维点
+    Vector3d xm = ans[0] * f_ref;      // 参考帧中的三维点 ans[0] 就是 d_ref
+    Vector3d xn = t + ans[1] * f2;     // 当前帧中的三维点 ans[1] 就是 d_cur，t 是平移向量，f2 是当前帧的单位方向向量旋转到参考帧坐标系
     Vector3d p_esti = (xm + xn) / 2.0; // 取两个结果的平均作为最终的三维点估计
-    double depth_estimation = p_esti.norm();  // 计算深度值（点到相机原点的距离）
+    /**
+     * @brief 计算深度值（点到相机原点的距离）
+     * @details norm()计算向量的L2范数，即向量在三维空间中的欧几里得距离。
+     *          由于p_esti是相对于相机坐标系的三维点坐标，其norm值表示该点
+     *          到相机原点的实际距离，这就是我们需要的深度值。
+     *          在单目SLAM中，深度值用于恢复三维场景的尺度信息。
+     */
+    double depth_estimation = p_esti.norm();
 
     // 计算深度的不确定性（考虑一个像素的误差）
-    Vector3d p = f_ref * depth_estimation;
-    Vector3d a = p - t;
-    double t_norm = t.norm();
-    double a_norm = a.norm();
+    Vector3d p = f_ref * depth_estimation; // 参考帧中点的三维坐标，方向 x 深度 = 三维坐标点
+    Vector3d a = p - t; // 参考帧中点的三维坐标减去平移向量，得到当前帧中点的三维坐标
+    double t_norm = t.norm(); // 平移向量的长度
+    double a_norm = a.norm();  // 当前帧中点的三维坐标的长度
     
     // 计算三角形的各个角度
     double alpha = acos(f_ref.dot(t) / t_norm);  // 参考帧处的角度
