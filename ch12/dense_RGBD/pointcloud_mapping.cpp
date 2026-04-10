@@ -32,9 +32,9 @@ int main(int argc, char **argv) {
         for (int i = 0; i < 7; i++) {
             fin >> data[i];
         }
-        Eigen::Quaterniond q(data[6], data[3], data[4], data[5]);
-        Eigen::Isometry3d T(q);
-        T.pretranslate(Eigen::Vector3d(data[0], data[1], data[2]));
+        Eigen::Quaterniond q(data[6], data[3], data[4], data[5]);  // 四元数格式为w,x,y,z
+        Eigen::Isometry3d T(q); // 从四元数构造变换矩阵
+        T.pretranslate(Eigen::Vector3d(data[0], data[1], data[2])); // 设置平移部分
         poses.push_back(T);
     }
 
@@ -49,11 +49,11 @@ int main(int argc, char **argv) {
     cout << "正在将图像转换为点云..." << endl;
 
     // 定义点云使用的格式：这里用的是XYZRGB
-    typedef pcl::PointXYZRGB PointT;
-    typedef pcl::PointCloud<PointT> PointCloud;
+    typedef pcl::PointXYZRGB PointT; // 定义点云类型
+    typedef pcl::PointCloud<PointT> PointCloud; // 定义点云类型
 
     // 新建一个点云
-    PointCloud::Ptr pointCloud(new PointCloud);
+    PointCloud::Ptr pointCloud(new PointCloud); // Ptr为pcl库中智能指针的定义
     for (int i = 0; i < 5; i++) {
         PointCloud::Ptr current(new PointCloud);
         cout << "转换图像中: " << i + 1 << endl;
@@ -65,34 +65,40 @@ int main(int argc, char **argv) {
                 unsigned int d = depth.ptr<unsigned short>(v)[u]; // 深度值
                 if (d == 0) continue; // 为0表示没有测量到
                 Eigen::Vector3d point;
+                // 将(u,v,d)转成相机坐标系下的点
                 point[2] = double(d) / depthScale;
                 point[0] = (u - cx) * point[2] / fx;
                 point[1] = (v - cy) * point[2] / fy;
+                // 将点从相机坐标系转换到世界坐标系
                 Eigen::Vector3d pointWorld = T * point;
 
                 PointT p;
                 p.x = pointWorld[0];
                 p.y = pointWorld[1];
                 p.z = pointWorld[2];
+                // rgb 颜色信息
                 p.b = color.data[v * color.step + u * color.channels()];
                 p.g = color.data[v * color.step + u * color.channels() + 1];
                 p.r = color.data[v * color.step + u * color.channels() + 2];
                 current->points.push_back(p);
             }
+        
         // depth filter and statistical removal 
         PointCloud::Ptr tmp(new PointCloud);
-        pcl::StatisticalOutlierRemoval<PointT> statistical_filter;
-        statistical_filter.setMeanK(50);
-        statistical_filter.setStddevMulThresh(1.0);
+        pcl::StatisticalOutlierRemoval<PointT> statistical_filter; // 创建滤波器对象（离群点移除滤波器）
+        statistical_filter.setMeanK(50); // 设置在进行统计时考虑查询点最近的50个邻居点
+        statistical_filter.setStddevMulThresh(1.0); // 设置标准差乘数阈值，默认值为1.0，表示如果一个点的平均距离与其邻居点的平均距离的差异超过了这个阈值，那么这个点就被认为是离群点
         statistical_filter.setInputCloud(current);
         statistical_filter.filter(*tmp);
         (*pointCloud) += *tmp;
     }
 
-    pointCloud->is_dense = false;
+    pointCloud->is_dense = false; // 设置点云为非密集型，允许存在无效点
     cout << "点云共有" << pointCloud->size() << "个点." << endl;
 
     // voxel filter 
+    // 创建一个体素滤波器对象，并设置体素网格的分辨率为0.03米。
+    // 体素滤波器会将点云划分为一个个小的立方体（体素），并在每个体素内用一个点来代表该体素内的所有点，从而达到降采样的效果。
     pcl::VoxelGrid<PointT> voxel_filter;
     double resolution = 0.03;
     voxel_filter.setLeafSize(resolution, resolution, resolution);       // resolution

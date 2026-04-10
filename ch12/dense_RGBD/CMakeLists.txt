@@ -35,11 +35,11 @@ include_directories(${OCTOMAP_INCLUDE_DIRS})
 find_package(Sophus REQUIRED)
 include_directories(${Sophus_INCLUDE_DIRS})
 
-#add_executable(pointcloud_mapping pointcloud_mapping.cpp)
-#target_link_libraries(pointcloud_mapping ${OpenCV_LIBS} ${PCL_LIBRARIES} Sophus::Sophus)
+add_executable(pointcloud_mapping pointcloud_mapping.cpp)
+target_link_libraries(pointcloud_mapping ${OpenCV_LIBS} ${PCL_LIBRARIES} Sophus::Sophus)
 
-#add_executable(octomap_mapping octomap_mapping.cpp)
-#target_link_libraries(octomap_mapping ${OpenCV_LIBS} ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES} Sophus::Sophus)
+add_executable(octomap_mapping octomap_mapping.cpp)
+target_link_libraries(octomap_mapping ${OpenCV_LIBS} ${PCL_LIBRARIES} ${OCTOMAP_LIBRARIES} Sophus::Sophus)
 
-#add_executable(surfel_mapping surfel_mapping.cpp)
-#target_link_libraries(surfel_mapping ${OpenCV_LIBS} ${PCL_LIBRARIES} Sophus::Sophus)
+add_executable(surfel_mapping surfel_mapping.cpp)
+target_link_libraries(surfel_mapping ${OpenCV_LIBS} ${PCL_LIBRARIES} Sophus::Sophus)
