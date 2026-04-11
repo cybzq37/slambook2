@@ -32,11 +32,15 @@ bool Dataset::Init() {
         return false;
     }
 
+    // Read 4 cameras' intrinsics and extrinsics from calibration file
     for (int i = 0; i < 4; ++i) {
+        // Read camera name (3 characters)
         char camera_name[3];
         for (int k = 0; k < 3; ++k) {
             fin >> camera_name[k];
         }
+        
+        // Read 3x4 projection matrix
         double projection_data[12];
         for (int k = 0; k < 12; ++k) {
             fin >> projection_data[k];
