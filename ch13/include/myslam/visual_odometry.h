@@ -15,7 +15,7 @@ namespace myslam {
  */
 class VisualOdometry {
    public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;  // 使得在堆上分配内存时，Eigen的向量化操作能够正确对齐
     typedef std::shared_ptr<VisualOdometry> Ptr;
 
     /// constructor with config file
