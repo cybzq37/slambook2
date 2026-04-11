@@ -11,6 +11,19 @@ namespace myslam {
 Dataset::Dataset(const std::string& dataset_path)
     : dataset_path_(dataset_path) {}
 
+/**
+ * @brief Initialize the dataset by reading camera intrinsics and extrinsics from
+ * the calibration file.
+ * calib.txt 为相机标定文件，把 3D世界坐标 → 相机坐标 → 像素坐标 的关系全部编码进去。
+ * P0 为左灰度相机
+ * P1 为右灰度相机
+ * P2 为左彩色相机
+ * P3 为右彩色相机
+ * 每个P是一个3x4的矩阵，前3列是相机内参矩阵K，最后一列是相机外参t（相机坐标系原点在世界坐标系中的位置）
+ * 由于图像被缩小了一半，所以内参矩阵K也要缩小一半。
+ *
+ * @return true if initialization is successful, false otherwise.
+*/
 bool Dataset::Init() {
     // read camera intrinsics and extrinsics
     ifstream fin(dataset_path_ + "/calib.txt");
@@ -28,16 +41,18 @@ bool Dataset::Init() {
         for (int k = 0; k < 12; ++k) {
             fin >> projection_data[k];
         }
-        Mat33 K;
+        Mat33 K; // camera intrinsics K
         K << projection_data[0], projection_data[1], projection_data[2],
             projection_data[4], projection_data[5], projection_data[6],
             projection_data[8], projection_data[9], projection_data[10];
-        Vec3 t;
+        Vec3 t; // camera extrinsics t
         t << projection_data[3], projection_data[7], projection_data[11];
         t = K.inverse() * t;
-        K = K * 0.5;
-        Camera::Ptr new_camera(new Camera(K(0, 0), K(1, 1), K(0, 2), K(1, 2),
-                                          t.norm(), SE3(SO3(), t)));
+        K = K * 0.5; // images are resized to half, so the intrinsics should be scaled accordingly
+        Camera::Ptr new_camera(new Camera(K(0, 0), K(1, 1), K(0, 2), K(1, 2), // the focal length fx, fy and principal point cx, cy
+                                          t.norm(), // the distance from camera center to world origin
+                                          SE3(SO3(), t) // the extrinsics of the camera, represented as a SE3 transformation from world to camera coordinates
+                                        ));
         cameras_.push_back(new_camera);
         LOG(INFO) << "Camera " << i << " extrinsics: " << t.transpose();
     }
@@ -62,11 +77,10 @@ Frame::Ptr Dataset::NextFrame() {
         return nullptr;
     }
 
+    // resize images to half, to speed up feature extraction and matching
     cv::Mat image_left_resized, image_right_resized;
-    cv::resize(image_left, image_left_resized, cv::Size(), 0.5, 0.5,
-               cv::INTER_NEAREST);
-    cv::resize(image_right, image_right_resized, cv::Size(), 0.5, 0.5,
-               cv::INTER_NEAREST);
+    cv::resize(image_left, image_left_resized, cv::Size(), 0.5, 0.5, cv::INTER_NEAREST);
+    cv::resize(image_right, image_right_resized, cv::Size(), 0.5, 0.5, cv::INTER_NEAREST);
 
     auto new_frame = Frame::CreateFrame();
     new_frame->left_img_ = image_left_resized;
