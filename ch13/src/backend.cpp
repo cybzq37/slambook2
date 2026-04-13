@@ -13,26 +13,27 @@ namespace myslam {
 
 Backend::Backend() {
     backend_running_.store(true);
-    backend_thread_ = std::thread(std::bind(&Backend::BackendLoop, this));
+    backend_thread_ = std::thread(std::bind(&Backend::BackendLoop, this));  // 启动线程循环，等待地图优化
 }
 
+// 前端调用，通知后端地图更新
 void Backend::UpdateMap() {
-    std::unique_lock<std::mutex> lock(data_mutex_);
+    std::unique_lock<std::mutex> lock(data_mutex_); // 上锁保护地图数据
     map_update_.notify_one();
 }
 
 void Backend::Stop() {
     backend_running_.store(false);
     map_update_.notify_one();
-    backend_thread_.join();
+    backend_thread_.join(); // 等待后端线程结束
 }
 
 void Backend::BackendLoop() {
     while (backend_running_.load()) {
-        std::unique_lock<std::mutex> lock(data_mutex_);
-        map_update_.wait(lock);
+        std::unique_lock<std::mutex> lock(data_mutex_); // map是共享数据，前端也在改
+        map_update_.wait(lock); // 让线程阻塞，直到调用 notify_one() 
 
-        /// 后端仅优化激活的Frames和Landmarks
+        // 后端仅优化激活的Frames和Landmarks
         Map::KeyframesType active_kfs = map_->GetActiveKeyFrames();
         Map::LandmarksType active_landmarks = map_->GetActiveMapPoints();
         Optimize(active_kfs, active_landmarks);
@@ -166,8 +167,7 @@ void Backend::Optimize(Map::KeyframesType &keyframes,
         }
     }
 
-    LOG(INFO) << "Outlier/Inlier in optimization: " << cnt_outlier << "/"
-              << cnt_inlier;
+    LOG(INFO) << "Outlier/Inlier in optimization: " << cnt_outlier << "/" << cnt_inlier;
 
     // Set pose and lanrmark position
     for (auto &v : vertices) {

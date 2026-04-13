@@ -23,29 +23,36 @@ Frontend::Frontend() {
     num_features_ = Config::Get<int>("num_features");
 }
 
+/**
+ * Add a new frame to the frontend. Depending on the current status, 
+ * it will either initialize the map, track the current frame, or reset 
+ * if tracking is lost.
+ * @param frame The new frame to be added and processed by the frontend.
+ * @return true if the frame was successfully processed, false otherwise.
+ */
 bool Frontend::AddFrame(myslam::Frame::Ptr frame) {
-    current_frame_ = frame;
+    this->current_frame_ = frame;
 
-    switch (status_) {
+    switch (this->status_) {
         case FrontendStatus::INITING:
-            StereoInit();
+            StereoInit(); // Attempt stereo initialization on the first frame
             break;
         case FrontendStatus::TRACKING_GOOD:
         case FrontendStatus::TRACKING_BAD:
-            Track();
+            Track(); // Track the current frame against the last frame and update status
             break;
         case FrontendStatus::LOST:
-            Reset();
+            Reset(); // Reset the frontend if tracking is lost
             break;
     }
 
-    last_frame_ = current_frame_;
+    this->last_frame_ = current_frame_;
     return true;
 }
 
 bool Frontend::Track() {
     if (last_frame_) {
-        current_frame_->SetPose(relative_motion_ * last_frame_->Pose());
+        current_frame_->SetPose(relative_motion_ * last_frame_->Pose()); // Initialize current frame pose based on relative motion from last frame
     }
 
     int num_track_last = TrackLastFrame();
@@ -63,7 +70,7 @@ bool Frontend::Track() {
     }
 
     InsertKeyframe();
-    relative_motion_ = current_frame_->Pose() * last_frame_->Pose().inverse();
+    relative_motion_ = current_frame_->Pose() * last_frame_->Pose().inverse(); // Update relative motion for the next frame
 
     if (viewer_) viewer_->AddCurrentFrame(current_frame_);
     return true;
@@ -270,7 +277,7 @@ int Frontend::TrackLastFrame() {
     return num_good_pts;
 }
 
-// Stereo initialization: detect features, match stereo, build initial map
+// Stereo camera initialization: detect features, match stereo, build initial map
 bool Frontend::StereoInit() {
     // 1. 在左图检测特征点
     int num_features_left = DetectFeatures();

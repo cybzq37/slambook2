@@ -1,0 +1,59 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug run_kitti_stereo",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/ch13/bin/run_kitti_stereo",
+            "args": ["/data/sequences/05"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/ch13/bin",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set gdb to follow child processes",
+                    "text": "set follow-fork-mode child",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "build_ch13",
+            "sourceLanguages": [
+                "cpp"
+            ]
+        },
+        {
+            "name": "Debug run_kitti_stereo (with config)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/ch13/bin/run_kitti_stereo",
+            "args": [
+                "--config_file=${workspaceFolder}/ch13/config/default.yaml",
+                "/data/sequences/05"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/ch13/bin",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "build_ch13",
+            "sourceLanguages": [
+                "cpp"
+            ]
+        }
+    ]
+}

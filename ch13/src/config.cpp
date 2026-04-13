@@ -13,6 +13,32 @@ bool Config::SetParameterFile(const std::string &filename) {
     return true;
 }
 
+void Config::PrintAllParameters() {
+    if (config_ == nullptr || !config_->file_.isOpened()) {
+        LOG(INFO) << "[Config] No config file loaded.";
+        return;
+    }
+    LOG(INFO) << "[Config] Loaded parameters:";
+    cv::FileNode root = config_->file_.root();
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        cv::FileNode node = *it;
+        std::string key = node.name();
+        if (node.isInt()) {
+            LOG(INFO) << "  " << key << ": " << (int)node;
+        } else if (node.isReal()) {
+            LOG(INFO) << "  " << key << ": " << (double)node;
+        } else if (node.isString()) {
+            LOG(INFO) << "  " << key << ": " << (std::string)node;
+        } else if (node.isSeq()) {
+            LOG(INFO) << "  " << key << ": [array/sequence]";
+        } else if (node.isMap()) {
+            LOG(INFO) << "  " << key << ": [map/dict]";
+        } else {
+            LOG(INFO) << "  " << key << ": [unknown type]";
+        }
+    }
+}
+
 Config::~Config() {
     if (file_.isOpened())
         file_.release();

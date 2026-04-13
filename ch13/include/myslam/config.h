@@ -23,6 +23,9 @@ class Config {
     // set a new config file
     static bool SetParameterFile(const std::string &filename);
 
+    // print all parameters for debugging
+    static void PrintAllParameters();
+
     // access the parameter values
     template <typename T>
     static T Get(const std::string &key) {
