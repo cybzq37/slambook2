@@ -5,6 +5,10 @@ namespace myslam {
 Camera::Camera() {
 }
 
+/// @brief 将世界坐标系中的点转换到相机坐标系中，使用相机的外参和提供的从世界到相机的变换。
+/// @param p_w 世界坐标系中的点
+/// @param T_c_w T_{c←w} 表示一个 SE3 变换
+/// @return 相机坐标系中的点
 Vec3 Camera::world2camera(const Vec3 &p_w, const SE3 &T_c_w) {
     return pose_ * T_c_w * p_w;
 }
