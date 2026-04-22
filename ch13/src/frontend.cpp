@@ -284,7 +284,8 @@ bool Frontend::StereoInit() {
     // 2. 在右图用光流跟踪左图特征点，获得双目匹配
     int num_coor_features = FindFeaturesInRight();
     // 3. 如果匹配特征点数不足，初始化失败
-    if (num_coor_features < num_features_init_) {
+    // 这里的num_features_init_是一个阈值，表示至少需要多少个匹配特征点才能进行可靠的初始化
+    if (num_coor_features < num_features_init_) { 
         return false;
     }
 
@@ -305,20 +306,21 @@ bool Frontend::StereoInit() {
 }
 
 int Frontend::DetectFeatures() {
-    // Create a mask to avoid detecting features too close to existing ones
+    // 创建一个与当前帧左图同样大小的掩码（mask），初始值全为255（有效区域），用于后续特征检测，掩码为0的区域不会被检测为新特征。
     cv::Mat mask(current_frame_->left_img_.size(), CV_8UC1, 255);
     
-    // Mark regions around existing features as invalid (0) in the mask
+    // 遍历当前帧左图中已存在的特征点，以每个特征点为中心，画一个 20×20 的矩形区域（左上角−10，右下角+10），并将该区域的掩码值设为0（无效）
+    // 防止新检测的特征点与已有特征点距离过近，保证空间分布均匀。
     for (auto &feat : current_frame_->features_left_) {
         cv::rectangle(mask, feat->position_.pt - cv::Point2f(10, 10),
                       feat->position_.pt + cv::Point2f(10, 10), 0, cv::FILLED);
     }
 
-    // Detect new keypoints using Shi-Tomasi corner detector
+    // 使用 Shi-Tomasi 角点检测器（GFTTDetector）在当前帧左图中检测特征点，传入之前创建的掩码（mask）以确保新特征点不会出现在已有特征点附近。检测到的特征点存储在 keypoints 向量中。
     std::vector<cv::KeyPoint> keypoints;
     gftt_->detect(current_frame_->left_img_, keypoints, mask);
     
-    // Create Feature objects for each detected keypoint and add to current frame
+    // 将检测到的特征点转换为 Feature 对象，并关联到当前帧的 features_left_ 向量中。同时统计检测到的新特征点数量并返回。
     int cnt_detected = 0;
     for (auto &kp : keypoints) {
         current_frame_->features_left_.push_back(
@@ -331,49 +333,53 @@ int Frontend::DetectFeatures() {
 }
 
 int Frontend::FindFeaturesInRight() {
-    // use LK flow to estimate points in the right image
+    // 1. 构建左图和右图的特征点初始位置列表
     std::vector<cv::Point2f> kps_left, kps_right;
     for (auto &kp : current_frame_->features_left_) {
-        kps_left.push_back(kp->position_.pt);
-        auto mp = kp->map_point_.lock();
+        kps_left.push_back(kp->position_.pt); // 左图特征点像素坐标
+        // lock() 是用于 std::weak_ptr 的成员函数。它的作用是尝试将 weak_ptr 升级为 std::shared_ptr。
+        // 如果该特征点已经关联了一个地图点（map point），则尝试获取该地图点的共享指针。
+        // 如果成功获取到地图点，则使用该地图点的三维位置通过相机模型投影到右图像平面上，得到右图特征点的初始像素坐标。
+        // 否则，如果该特征点没有关联地图点，则直接使用左图特征点的像素坐标作为右图特征点的初始猜测。
+        auto mp = kp->map_point_.lock(); // 世界坐标系中的地图点
         if (mp) {
-            // use projected points as initial guess
-            auto px =
-                camera_right_->world2pixel(mp->pos_, current_frame_->Pose());
+            // 如果该特征点已关联地图点，则用三维点投影到右图作为初始猜测
+            auto px = camera_right_->world2pixel(mp->pos_, current_frame_->Pose());
             kps_right.push_back(cv::Point2f(px[0], px[1]));
         } else {
-            // use same pixel in left iamge
+            // 使用左图的像素点坐标作为右图的初始猜测坐标
             kps_right.push_back(kp->position_.pt);
         }
     }
 
-    // Perform optical flow tracking to match left features in the right image
-    std::vector<uchar> status;
-    Mat error;
+    // 2. 使用金字塔LK光流法在右图中跟踪左图特征点
+    std::vector<uchar> status; // 跟踪状态（1=成功，0=失败）
+    Mat error; // 跟踪误差
     cv::calcOpticalFlowPyrLK(
-        current_frame_->left_img_, current_frame_->right_img_, 
-        kps_left, // input points in left image
-        kps_right, // output points in right image (initial guess)
-        status, // output status vector (1 if flow found, 0 otherwise)
-        error, // output error vector
-        cv::Size(11, 11), // window size for tracking
-        3, // max pyramid level
-        // termination criteria for iterative search (max 30 iterations or epsilon of 0.01)
-        cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01), 
-        cv::OPTFLOW_USE_INITIAL_FLOW);
+        current_frame_->left_img_,   // 输入：左图
+        current_frame_->right_img_,  // 输入：右图
+        kps_left,                    // 输入：左图特征点
+        kps_right,                   // 输入输出：右图特征点（初始猜测/输出结果）
+        status,                      // 输出：每个点的跟踪状态
+        error,                       // 输出：每个点的误差
+        cv::Size(11, 11),            // 光流窗口大小
+        3,                           // 金字塔层数
+        cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01), // 终止条件
+        cv::OPTFLOW_USE_INITIAL_FLOW // 使用初始猜测
+    );
 
     int num_good_pts = 0;
-    // Process tracking results for each feature
+    // 3. 处理跟踪结果，将成功跟踪的点封装为右图特征对象
     for (size_t i = 0; i < status.size(); ++i) {
         if (status[i]) {
-            // Successfully tracked feature in right image
-            cv::KeyPoint kp(kps_right[i], 7);
-            Feature::Ptr feat(new Feature(current_frame_, kp));
-            feat->is_on_left_image_ = false;
+            // 跟踪成功，创建右图特征对象并加入当前帧
+            cv::KeyPoint kp(kps_right[i], 7); // 7为特征点半径（特征点不是一个像素，而是一块区域）
+            Feature::Ptr feat(new Feature(current_frame_, kp)); // 创建右图特征对象
+            feat->is_on_left_image_ = false; // 标记这个特征点来自右图，下面已经加了，这里加入可能是为了健壮性
             current_frame_->features_right_.push_back(feat);
             num_good_pts++;
         } else {
-            // Failed to track feature in right image
+            // 跟踪失败，右图特征为nullptr
             current_frame_->features_right_.push_back(nullptr);
         }
     }
@@ -382,16 +388,16 @@ int Frontend::FindFeaturesInRight() {
 }
 
 bool Frontend::BuildInitMap() {
-    // Get camera poses for triangulation (left and right stereo cameras)
+    // 1. 获取左右目相机的位姿，用于三角化
     std::vector<SE3> poses{camera_left_->pose(), camera_right_->pose()};
-    size_t cnt_init_landmarks = 0;
-    
-    // Iterate through all detected features in the left image
+    size_t cnt_init_landmarks = 0; // 记录新建地图点数量
+
+    // 2. 遍历当前帧左图的所有特征点
     for (size_t i = 0; i < current_frame_->features_left_.size(); ++i) {
-        // Skip if no corresponding feature found in right image
+        // 如果右图没有对应的特征点，则跳过
         if (current_frame_->features_right_[i] == nullptr) continue;
-        
-        // Convert pixel coordinates to camera coordinates for both cameras
+
+        // 3. 将左右图的像素坐标转换为相机坐标系下的归一化坐标
         std::vector<Vec3> points{
             camera_left_->pixel2camera(
                 Vec2(current_frame_->features_left_[i]->position_.pt.x,
@@ -399,33 +405,33 @@ bool Frontend::BuildInitMap() {
             camera_right_->pixel2camera(
                 Vec2(current_frame_->features_right_[i]->position_.pt.x,
                      current_frame_->features_right_[i]->position_.pt.y))};
-        Vec3 pworld = Vec3::Zero();
+        Vec3 pworld = Vec3::Zero(); // 存放三角化得到的三维点
 
-        // Triangulate to get 3D world position, verify depth is positive
+        // 4. 三角化，得到三维点坐标，且深度为正
         if (triangulation(poses, points, pworld) && pworld[2] > 0) {
-            // Create new map point and set its position
+            // 5. 创建新的地图点对象，并设置三维坐标
             auto new_map_point = MapPoint::CreateNewMappoint();
             new_map_point->SetPos(pworld);
-            
-            // Link map point to observations in both left and right images
+
+            // 6. 将该地图点与左右图的特征点建立观测关系
             new_map_point->AddObservation(current_frame_->features_left_[i]);
             new_map_point->AddObservation(current_frame_->features_right_[i]);
-            
-            // Link features to the new map point
+
+            // 7. 将左右图特征点的 map_point_ 指针指向新建的地图点
             current_frame_->features_left_[i]->map_point_ = new_map_point;
             current_frame_->features_right_[i]->map_point_ = new_map_point;
-            cnt_init_landmarks++;
-            
-            // Add map point to the global map
+            cnt_init_landmarks++; // 新增地图点计数
+
+            // 8. 将新地图点加入全局地图
             map_->InsertMapPoint(new_map_point);
         }
     }
-    
-    // Mark current frame as keyframe and add to map
-    current_frame_->SetKeyFrame();  // Set current frame as keyframe
-    map_->InsertKeyFrame(current_frame_); // Insert current frame into the map as a keyframe
-    
-    // Update backend with new map data
+
+    // 9. 将当前帧设置为关键帧，并加入地图
+    current_frame_->SetKeyFrame();  // 标记为关键帧
+    map_->InsertKeyFrame(current_frame_); // 插入关键帧
+
+    // 10. 通知后端更新地图
     backend_->UpdateMap();
 
     LOG(INFO) << "Initial map created with " << cnt_init_landmarks
