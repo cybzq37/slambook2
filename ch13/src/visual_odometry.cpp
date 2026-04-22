@@ -19,11 +19,8 @@ bool VisualOdometry::Init() {
         return false;
     }
 
-    // Print all parameters in Config to verify config file is read successfully
-    Config::PrintAllParameters();
-
     dataset_ = Dataset::Ptr(new Dataset(Config::Get<std::string>("dataset_dir")));
-    CHECK_EQ(dataset_->Init(), true);
+    CHECK_EQ(dataset_->Init(), true); // check if dataset is inited successfully
 
     // create components and links
     frontend_ = Frontend::Ptr(new Frontend());
