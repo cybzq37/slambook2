@@ -12,8 +12,13 @@ Dataset::Dataset(const std::string& dataset_path)
     : dataset_path_(dataset_path) {}
 
 /**
- * @brief Initialize the dataset by reading camera intrinsics and extrinsics from the calibration file.
- * calib.txt 为相机标定文件，把 3D世界坐标 → 相机坐标 → 像素坐标 的关系全部编码进去。
+ * @brief Initialize the dataset by reading camera intrinsics and extrinsics from
+ * the calibration file.
+ * calib.txt 为相机标定文件，是一个 3x4 的投影矩阵P，把世界坐标点投影到像素坐标（世界坐标 → 相机坐标 → 像素坐标）。
+ * 通常将 P 分解为内参 K 和外参 [R|t] 的乘积：P=K[R|t]
+ * 其中 K 是 3×3 的相机内参矩阵，[R|t] 是 3×4 的相机外参矩阵，包含旋转矩阵 R 和平移向量 t，描述了相机坐标系相对于世界坐标系的位置和姿态。
+ * 对应到标定文件，前 3 列应该是 KR，最后一列应该是 Kt。
+ * 摄像机已经做了（去旋转/坐标对齐/立体矫正）处理，所以 R 是单位矩阵，P 的前三列就是 K，最后一列就是 Kt。
  * P0 为左灰度相机
  * P1 为右灰度相机
  * P2 为左彩色相机
