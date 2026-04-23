@@ -51,53 +51,64 @@ bool Frontend::AddFrame(myslam::Frame::Ptr frame) {
 }
 
 bool Frontend::Track() {
+    // 如果存在上一帧，则用上一帧的位姿和相对运动初始化当前帧的位姿
     if (last_frame_) {
-        current_frame_->SetPose(relative_motion_ * last_frame_->Pose()); // Initialize current frame pose based on relative motion from last frame
+        current_frame_->SetPose(relative_motion_ * last_frame_->Pose()); // 用相对运动初始化当前帧位姿
     }
 
+    // 1. 跟踪上一帧的特征点，得到当前帧的初始特征点集合
     int num_track_last = TrackLastFrame();
+    // 2. 优化当前帧的位姿，并统计内点数量
     tracking_inliers_ = EstimateCurrentPose();
 
+    // 3. 根据内点数量判断当前跟踪状态
     if (tracking_inliers_ > num_features_tracking_) {
-        // tracking good
+        // 跟踪效果好
         status_ = FrontendStatus::TRACKING_GOOD;
     } else if (tracking_inliers_ > num_features_tracking_bad_) {
-        // tracking bad
+        // 跟踪效果较差
         status_ = FrontendStatus::TRACKING_BAD;
     } else {
-        // lost
+        // 跟踪失败，进入丢失状态
         status_ = FrontendStatus::LOST;
     }
 
+    // 4. 判断是否需要插入关键帧
     InsertKeyframe();
-    relative_motion_ = current_frame_->Pose() * last_frame_->Pose().inverse(); // Update relative motion for the next frame
+    // 5. 更新相对运动，用于下一帧的位姿初始化
+    relative_motion_ = current_frame_->Pose() * last_frame_->Pose().inverse();
 
+    // 6. 如果有可视化模块，则显示当前帧
     if (viewer_) viewer_->AddCurrentFrame(current_frame_);
     return true;
 }
 
 bool Frontend::InsertKeyframe() {
+    // 1. 如果当前帧跟踪到的内点数量足够多，则不需要插入关键帧，直接返回
     if (tracking_inliers_ >= num_features_needed_for_keyframe_) {
-        // still have enough features, don't insert keyframe
+        // 还有足够的特征点，不插入关键帧
         return false;
     }
-    // current frame is a new keyframe
+    // 2. 当前帧被设为新的关键帧
     current_frame_->SetKeyFrame();
-    map_->InsertKeyFrame(current_frame_);
+    map_->InsertKeyFrame(current_frame_); // 加入地图
 
     LOG(INFO) << "Set frame " << current_frame_->id_ << " as keyframe "
               << current_frame_->keyframe_id_;
 
+    // 3. 为新关键帧中的地图点添加观测关系
     SetObservationsForKeyFrame();
-    DetectFeatures();  // detect new features
+    // 4. 在当前帧左图检测新的特征点
+    DetectFeatures();
 
-    // track in right image
+    // 5. 在右图跟踪新检测到的特征点，获得双目匹配
     FindFeaturesInRight();
-    // triangulate map points
+    // 6. 对新检测到的特征点进行三角化，生成新的地图点
     TriangulateNewPoints();
-    // update backend because we have a new keyframe
+    // 7. 通知后端进行地图优化
     backend_->UpdateMap();
 
+    // 8. 如果有可视化模块，则更新地图显示
     if (viewer_) viewer_->UpdateMap();
 
     return true;
